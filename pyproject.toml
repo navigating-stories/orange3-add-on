@@ -35,7 +35,7 @@ classifiers = [
 dependencies = [
     "pyqt6 == 6.7.1",
     "pyqtwebengine == 5.15.7",
-    "orange3 == 3.37",
+    "orange3 > 3.37",
     "orange3-text == 1.16.1",
     "orange3-network == 1.9.0",
     "pandas == 2.2.2",

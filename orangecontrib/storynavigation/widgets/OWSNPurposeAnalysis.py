@@ -318,7 +318,7 @@ class OWSNPurposeAnalysis(OWWidget, ConcurrentWidgetMixin):
         first_id = sys.maxsize
         try:
             for index, row in self.analyzer.purpose_analysis.loc[
-                             self.analyzer.purpose_analysis["text_id"] == "ST" + str(story_id)].iloc[::-1].iterrows():
+                             self.analyzer.purpose_analysis["text_id"] == story_id].iloc[::-1].iterrows():
                 start = int(row["character_id"])
                 end = start + len(row["text"])
                 if end >= first_id:
@@ -341,7 +341,7 @@ class OWSNPurposeAnalysis(OWWidget, ConcurrentWidgetMixin):
         html_text += self.__make_entity_bar_for_html()
         for story_text, story_id in self.text_tuples:
             if len(self.stories_selected) == 0 or int(story_id) in self.stories_selected:
-                story_text = self.__add_entity_colors_to_story_text(story_text, story_id)
+                story_text = self.__add_entity_colors_to_story_text(story_text, int(story_id))
                 html_text += "<hr>" + self.__add_paragraphs_to_story_text(story_text)
         html_text += "</body></html>"
         self.doc_webview.setHtml(html_text)

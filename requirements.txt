@@ -12,7 +12,7 @@ textblob-nl==0.0.1
 thefuzz==0.22.1
 torch==2.4.0
 transformers==4.44.2
-Orange3==3.37.0
+Orange3>3.37.0
 Orange3-Network==1.9.0
 Orange3-Text==1.16.1
 DHTMLParser3==3.0.17

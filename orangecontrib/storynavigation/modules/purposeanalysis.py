@@ -1,7 +1,7 @@
 import pandas as pd
 import storynavigation.modules.constants as constants
 import storynavigation.modules.util as util
-
+import sys
 
 class PurposeAnalyzer:
     """Class for extracting purpose from texts
@@ -36,12 +36,12 @@ class PurposeAnalyzer:
 
 
     def __convert_str_columns_to_ints(self, story_elements_df) -> None:
-        columns_to_convert = ["storyid", "sentence_id", "token_start_idx", "spacy_head_idx"]
+        columns_to_convert = ["storyid", "sentence_id", "segment_id", "token_start_idx", "spacy_head_idx"]
         story_elements_df[columns_to_convert] = story_elements_df[columns_to_convert].astype(int)
 
 
     def __compute_sentence_offsets(self, story_elements_df) -> pd.DataFrame:
-        sentences_df = story_elements_df.groupby(["storyid", "sentence_id"]).first().reset_index()[["storyid", "sentence_id", "sentence"]]
+        sentences_df = story_elements_df.groupby(["storyid", "sentence_id"]).first().reset_index()[["storyid", "sentence_id", "segment_id", "sentence"]]
         char_offsets = []
         last_sentence = ""
         for sentence_id, sentence in zip(sentences_df["sentence_id"],
@@ -53,7 +53,7 @@ class PurposeAnalyzer:
             char_offsets.append(char_offset)
             last_sentence = sentence
         sentences_df["char_offset"] = char_offsets
-        return sentences_df[["storyid", "sentence_id", "char_offset"]].set_index(["storyid", "sentence_id"])
+        return sentences_df[["storyid", "sentence_id", "segment_id", "char_offset"]].set_index(["storyid", "sentence_id"])
 
 
     def __get_missing_label(self, entities_from_onsets, storyid, sentence_id) -> list:
@@ -61,7 +61,7 @@ class PurposeAnalyzer:
         return [x for x in self.PURPOSE_LABELS if x not in labels_found]
 
 
-    def __add_missing_relation_part(self, entities_from_onsets, sentence_offsets, storyid, sentence_id, previous_sentence) -> None:
+    def __add_missing_relation_part(self, entities_from_onsets, sentence_offsets, storyid, sentence_id, segment_id, previous_sentence) -> None:
         missing_labels = self.__get_missing_label(entities_from_onsets, storyid, sentence_id)
         if len(missing_labels) == 1:
             char_id_start = sentence_offsets.loc[(storyid, sentence_id - 1)]["char_offset"]
@@ -69,6 +69,7 @@ class PurposeAnalyzer:
             entities_from_onsets[storyid][char_id_start] = {
                 'label_': missing_labels[0],
                 'sentence_id': sentence_id,
+                'segment_id': segment_id,
                 'text': previous_sentence
             }
 
@@ -79,6 +80,7 @@ class PurposeAnalyzer:
             sentence_ids = {}
             for char_id in entities_from_onsets[storyid]:
                 sentence_id = entities_from_onsets[storyid][char_id]['sentence_id']
+                segment_id = entities_from_onsets[storyid][char_id]['segment_id']
                 label = entities_from_onsets[storyid][char_id]['label_']
                 if sentence_id in sentence_ids:
                     sentence_ids[sentence_id].append(label)
@@ -90,13 +92,14 @@ class PurposeAnalyzer:
                                                      sentence_offsets, 
                                                      storyid, 
                                                      sentence_id,
+                                                     segment_id,
                                                      sentences_df.loc[storyid, sentence_id - 1])
         return entities_from_onsets
 
 
     def __convert_entities(self, entities, sentence_offsets) -> dict:
         entities_from_onsets = {}
-        for storyid, sentence_id, sentence_data in entities:
+        for storyid, sentence_id, segment_id, sentence_data in entities:
             story_entities = entities_from_onsets.setdefault(storyid, {})
             char_offset_sentence = sentence_offsets.loc[(storyid, sentence_id)]["char_offset"]
             for token_start_id, token_data in sentence_data.items():
@@ -119,6 +122,7 @@ class PurposeAnalyzer:
                 entities.append([
                     sentence_dict_index[0],
                     sentence_dict_index[1],
+                    sentence_entities[list(sentence_entities.keys())[0]]["segment_id"],
                     sentence_entities])
             if callback:
                 callback((100*(index + 1))/len(sentence_dict))
@@ -167,6 +171,7 @@ class PurposeAnalyzer:
                 sentence_entities[child_entity_id] = {
                     "text": child_entity_text + in_between_text + sentence_entities[head_start_id]["text"],
                     "sentence_id": sentence_dict[child_entity_id]["sentence_id"],
+                    "segment_id": sentence_dict[child_entity_id]["segment_id"],
                     "label_": sentence_entities[head_start_id]['label_'] }
                 del sentence_entities[head_start_id]
                 head_start_id = child_entity_id
@@ -219,15 +224,18 @@ class PurposeAnalyzer:
     def __add_sentence_entity_adverb(self, sentence_dict, sentence_entities, entity_start_id, head_start_id, head_of_head_start_id) -> None:
         entity = sentence_dict[entity_start_id]
         sentence_id = entity["sentence_id"]
+        segment_id = entity["segment_id"]
         reversed_order = ([x[2] for x in self.verb_frames if x[1] == entity["token_text"].lower()] == ['yes'])
         head_label, head_of_head_label = ['PURPOSE', 'CONTEXT'] if reversed_order else ['CONTEXT', 'PURPOSE']
         sentence_entities[entity_start_id] = {
             "label_": "ADVERB", 
             "sentence_id": sentence_id,
+            "segment_id": segment_id,
             "text": entity["token_text"]}
         sentence_entities[head_start_id] = {
             "label_": head_label,
             "sentence_id": sentence_id,
+            "segment_id": segment_id,
             "text": sentence_dict[head_start_id]["token_text"]}
         processed_ids = {entity_start_id, head_start_id, head_of_head_start_id}
         self.__expand_phrase(sentence_dict, 
@@ -239,6 +247,7 @@ class PurposeAnalyzer:
             sentence_entities[head_of_head_start_id] = {
                 "label_": head_of_head_label,
                 "sentence_id": sentence_id,
+                "segment_id": segment_id,
                 "text": sentence_dict[head_of_head_start_id]["token_text"]}
             self.__expand_phrase(sentence_dict, 
                                          sentence_entities, 
@@ -250,9 +259,11 @@ class PurposeAnalyzer:
     def __add_sentence_entity_verb(self, sentence_dict, sentence_entities, entity_start_id) -> None:
         entity = sentence_dict[entity_start_id]
         sentence_id = entity["sentence_id"]
+        segment_id = entity["segment_id"]
         sentence_entities[entity_start_id] = {
             "label_": "PURPOSE", 
             "sentence_id": sentence_id,
+            "segment_id": segment_id,
             "text": entity["token_text"]}
         self.__expand_phrase(sentence_dict, sentence_entities, entity_start_id, entity_start_id, processed_ids=set())
 
@@ -267,10 +278,10 @@ class PurposeAnalyzer:
 
 
     def __sort_and_filter_results(self, entities) -> pd.DataFrame:
-        results = [(entity["text"], entity["label_"], storyid, entity["sentence_id"], char_id)
+        results = [(entity["text"], entity["label_"], storyid, entity["segment_id"], entity["sentence_id"], char_id)
                    for storyid, story_entities in entities.items()
                    for char_id, entity in story_entities.items()]
-        results_df = pd.DataFrame(results, columns=["text", "label", "storyid", "sentence_id", "character_id"])
+        results_df = pd.DataFrame(results, columns=["text", "label", "storyid", "segment_id", "sentence_id", "character_id"])
         results_df.sort_values(by=["storyid", "character_id"], inplace=True)
-        results_df["text_id"] = "ST" + results_df["storyid"].astype(str)
-        return results_df[["text", "label", "text_id", "sentence_id", "character_id"]].reset_index(drop=True)
+        results_df["text_id"] = results_df["storyid"].astype(int)
+        return results_df[["text", "label", "text_id", "segment_id", "sentence_id", "character_id"]].reset_index(drop=True)

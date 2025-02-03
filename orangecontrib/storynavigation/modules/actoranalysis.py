@@ -186,6 +186,7 @@ class ActorTagger:
             ents = [dict(t) for t in unique_tuples]
 
             doc = {"text": sentence, "ents": ents}    
+            print('ACTORS.PY', doc)
             html += displacy.render(doc, style="ent", options=options, manual=True)
             
         

@@ -28,12 +28,12 @@ class MeansAnalyzer:
 
 
     def __convert_str_columns_to_ints(self, story_elements_df) -> None:
-        columns_to_convert = ["storyid", "sentence_id", "token_start_idx", "spacy_head_idx"]
+        columns_to_convert = ["storyid", "segment_id", "sentence_id", "token_start_idx", "spacy_head_idx"]
         story_elements_df[columns_to_convert] = story_elements_df[columns_to_convert].astype(int)
 
 
     def __compute_sentence_offsets(self, story_elements_df) -> pd.DataFrame:
-        sentences_df = story_elements_df.groupby(["storyid", "sentence_id"]).first().reset_index()[["storyid", "sentence_id", "sentence"]]
+        sentences_df = story_elements_df.groupby(["storyid", "sentence_id"]).first().reset_index()[["storyid", "segment_id", "sentence_id", "sentence"]]
         char_offsets = []
         last_sentence = ""
         for sentence_id, sentence in zip(sentences_df["sentence_id"],
@@ -45,7 +45,7 @@ class MeansAnalyzer:
             char_offsets.append(char_offset)
             last_sentence = sentence
         sentences_df["char_offset"] = char_offsets
-        return sentences_df[["storyid", "sentence_id", "char_offset"]].set_index(["storyid", "sentence_id"])
+        return sentences_df[["storyid", "segment_id", "sentence_id", "char_offset"]].set_index(["storyid", "sentence_id"])
 
 
     def __convert_entities(self, entities, sentence_offsets) -> dict:
@@ -113,6 +113,7 @@ class MeansAnalyzer:
                 in_between_text = " " if entity_gap_size == 1 else ", "
                 sentence_entities[child_entity_id] = {
                     "text": child_entity_text + in_between_text + sentence_entities[head_start_id]["text"],
+                    "segment_id": sentence_df[child_entity_id]["segment_id"],
                     "sentence_id": sentence_df[child_entity_id]["sentence_id"],
                     "label_": "MEANS" }
                 del sentence_entities[head_start_id]
@@ -153,17 +154,21 @@ class MeansAnalyzer:
 
     def __add_sentence_entity(self, sentence_dict, sentence_entities, entity_start_id, head_start_id, head_of_head_start_id) -> None:
         entity = sentence_dict[entity_start_id]
+        segment_id = entity["segment_id"]
         sentence_id = entity["sentence_id"]
         sentence_entities[entity_start_id] = {
             "label_": "PREP", 
+            "segment_id": segment_id,
             "sentence_id": sentence_id,
             "text": entity["token_text"]}
         sentence_entities[head_start_id] = {
             "label_": "MEANS",
+            "segment_id": segment_id,
             "sentence_id": sentence_id,
             "text": sentence_dict[head_start_id]["token_text"]}
         sentence_entities[head_of_head_start_id] = {
             "label_": "VERB",
+            "segment_id": segment_id,
             "sentence_id": sentence_id,
             "text": sentence_dict[head_of_head_start_id]["token_text"]}
         self.__expand_means_phrase(sentence_dict, sentence_entities, entity_start_id, head_start_id)
@@ -183,10 +188,10 @@ class MeansAnalyzer:
 
 
     def __sort_and_filter_results(self, entities) -> pd.DataFrame:
-        results = [(entity["text"], entity["label_"], storyid, entity["sentence_id"], char_id)
+        results = [(entity["text"], entity["label_"], storyid, entity["segment_id"], entity["sentence_id"], char_id)
                    for storyid, story_entities in entities.items()
                    for char_id, entity in story_entities.items()]
-        results_df = pd.DataFrame(results, columns=["text", "label", "storyid", "sentence_id", "character_id"])
+        results_df = pd.DataFrame(results, columns=["text", "label", "storyid", "segment_id", "sentence_id", "character_id"])
         results_df.sort_values(by=["storyid", "character_id"], inplace=True)
-        results_df["text_id"] = "ST" + results_df["storyid"].astype(str)
-        return results_df[["text", "label", "text_id", "sentence_id", "character_id"]].reset_index(drop=True)
+        results_df["text_id"] = results_df["storyid"].astype(int)
+        return results_df[["text", "label", "text_id", "segment_id", "sentence_id", "character_id"]].reset_index(drop=True)

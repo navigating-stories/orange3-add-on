@@ -218,35 +218,38 @@ class OWSNSettingAnalysis(OWWidget, ConcurrentWidgetMixin):
             self.text_tuples = self.make_text_tuples(story_elements)
             self.__action_analyze_setting_wrapper()
 
-            self.doc_list_model.setup_data(self.make_document_names(self.text_tuples), [text for text, text_id in self.text_tuples])
+            self.doc_list_model.setup_data(self.make_document_names(self.text_tuples), [text for text, _, _ in self.text_tuples])
 
 
     def make_document_names(self, text_tuples):
         document_names = []
-        for text, text_id in text_tuples:
+        for _, text_id, _ in text_tuples:
             document_names.append("Document " + str(int(text_id) + 1))
         return document_names
 
 
     def make_text_tuples(self, story_elements):
         story_elements_df = util.convert_orangetable_to_dataframe(story_elements)
-        current_story = ""
         current_story_id = ""
-        last_sentence = ""
+        current_story_text = ""
+        current_story_sentences = []
+        last_sentence_id = -1
         text_tuples = []
         for index, row in story_elements_df.iterrows():
             story_id = row["storyid"]
             if story_id != current_story_id:
                 if current_story_id != "":
-                    text_tuples.append((current_story, current_story_id))
-                current_story = ""
+                    text_tuples.append((current_story_text, current_story_id, current_story_sentences))
                 current_story_id = story_id
+                current_story_text = ""
+                current_story_sentences = []
                 last_sentence = ""
-            if row["sentence"] != last_sentence:
-                current_story += row["sentence"] if current_story == "" else " " + row["sentence"]
-                last_sentence = row["sentence"]
-        if current_story != "":
-            text_tuples.append((current_story, current_story_id))
+            if row["sentence_id"] != last_sentence_id:
+                current_story_text += row["sentence"] if current_story_text == "" else " " + row["sentence"]
+                current_story_sentences.append((row["storyid"], row["sentence_id"], row["segment_id"], row["sentence"]))
+                last_sentence_id = row["sentence_id"]
+        if current_story_text != "":
+            text_tuples.append((current_story_text, current_story_id, current_story_sentences))
         return text_tuples
 
 
@@ -298,8 +301,8 @@ class OWSNSettingAnalysis(OWWidget, ConcurrentWidgetMixin):
 
     def __add_entity_colors_to_story_text(self, story_text, story_id):
         for index, row in self.analyzer.settings_analysis.loc[
-                             self.analyzer.settings_analysis["storyid"] == "ST" + str(story_id)].iloc[::-1].iterrows():
-           start = int(row["character id"])
+                             self.analyzer.settings_analysis["text_id"] == int(story_id)].iloc[::-1].iterrows():
+           start = int(row["character_id"])
            end = start + len(row["text"])
            story_text = self.__insert_entity_color_in_story_text(story_text,
                                                                  start,
@@ -315,7 +318,7 @@ class OWSNSettingAnalysis(OWWidget, ConcurrentWidgetMixin):
     def __visualize_text_data(self):
         html_text = "<html><body>"
         html_text += self.__make_entity_bar_for_html()
-        for story_text, story_id in self.text_tuples:
+        for story_text, story_id, _ in self.text_tuples:
             if len(self.stories_selected) == 0 or int(story_id) in self.stories_selected:
                 story_text = self.__add_entity_colors_to_story_text(story_text, story_id)
                 html_text += "<hr>" + self.__add_paragraphs_to_story_text(story_text)
